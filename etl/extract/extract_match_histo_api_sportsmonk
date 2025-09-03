@@ -1,0 +1,299 @@
+import requests
+import psycopg2
+from psycopg2.extras import execute_batch
+from dotenv import load_dotenv
+import os
+import json
+
+load_dotenv()
+USER = os.getenv("user")
+PASSWORD = os.getenv("password")
+HOST = os.getenv("host")
+PORT = os.getenv("port")
+DBNAME = os.getenv("dbname")
+
+# Connexion PostgreSQL
+conn = psycopg2.connect(
+    dbname=DBNAME,
+    user=USER,
+    password=PASSWORD,
+    host=HOST,
+    port=PORT
+)
+
+API_TOKEN = "dBJ4oSVlnN6Cn6BaorSyJ1Xdo133asdlmklRr4w6uebbxP2iaqBk0T0Xdbee"
+BASE_URL = "https://api.sportmonks.com/v3/football/fixtures"
+
+cur = conn.cursor()
+
+SEASONS = {
+    16036: "2019/2020",
+    17420: "2020/2021",
+    18378: "2021/2022",
+    19734: "2022/2023",
+    21646: "2023/2024",
+    23614: "2024/2025",
+    25583: "2025/2026",
+}
+
+TYPE_MAP = {
+    34: "Corners",
+    43: "Attacks",
+    44: "Dangerous Attacks",
+    45: "Ball Possession",
+    52: "Goals",
+    56: "Fouls",
+    80: "Passes",
+    86: "Shots on Target",
+}
+
+# Charger le mapping des noms avec gestion d'erreur
+NAME_MAPPING = {}
+try:
+    with open("scripts/team_name_mapping.json", "r", encoding="utf-8") as f:
+        NAME_MAPPING = json.load(f)
+    print(f"✅ Mapping chargé: {len(NAME_MAPPING)} équipes mappées")
+except FileNotFoundError:
+    print("❌ Fichier team_name_mapping.json non trouvé")
+    exit(1)
+except json.JSONDecodeError:
+    print("❌ Erreur de format JSON dans team_name_mapping.json")
+    exit(1)
+except Exception as e:
+    print(f"❌ Erreur lors du chargement du mapping: {e}")
+    exit(1)
+
+def get_team_id_from_name(team_name):
+    """Trouve le team_id à partir du nom d'équipe dans notre base"""
+    if not team_name:
+        return None
+    
+    # Utiliser le mapping pour trouver le nom correspondant dans notre base
+    mapped_name = NAME_MAPPING.get(team_name)
+    if mapped_name is None:
+        print(f"❌ Aucun mapping trouvé pour: '{team_name}'")
+        return None
+    
+    try:
+        cur.execute("SELECT team_id FROM teams WHERE name = %s;", (mapped_name,))
+        result = cur.fetchone()
+        if result:
+            return result[0]
+        else:
+            print(f"❌ Équipe '{mapped_name}' (original: '{team_name}') introuvable dans la base")
+            return None
+    except Exception as e:
+        print(f"❌ Erreur lors de la recherche de l'équipe '{mapped_name}': {e}")
+        return None
+
+def fetch_fixtures_for_season(season_id, season_label):
+    fixtures = []
+    url = BASE_URL
+    params = {
+        "api_token": API_TOKEN,
+        "filters": f"fixtureSeasons:{season_id};fixtureLeagues:8",
+        "include": "participants;statistics"
+    }
+
+    while url:
+        print(f"Fetching season {season_label}: {url}")
+        resp = requests.get(url, params=params)
+        data = resp.json()
+
+        if "data" not in data:
+            print("⚠️ Pas de clé 'data' dans la réponse API :", data)
+            break
+
+        for fixture in data["data"]:
+            fixture["season_label"] = season_label
+            fixtures.append(fixture)
+
+        # Pagination
+        pagination = data.get("pagination", {})
+        if pagination.get("has_more"):
+            url = pagination.get("next_page")
+            params = {"api_token": API_TOKEN}
+        else:
+            url = None
+
+    return fixtures
+
+def safe_value(value):
+    """Convertit les valeurs None en 0 pour les champs numériques"""
+    if value is None:
+        return 0
+    try:
+        # Convertir en float si possible, sinon retourner 0
+        if isinstance(value, (int, float)):
+            return float(value)
+        elif isinstance(value, str) and value.strip():
+            return float(value)
+        else:
+            return 0
+    except (ValueError, TypeError):
+        return 0
+
+def validate_row(row):
+    """Valide que toutes les valeurs du tuple sont non-null et valides"""
+    if row is None:
+        return False
+    
+    # Vérifier chaque valeur du tuple
+    for i, value in enumerate(row):
+        if value is None:
+            print(f"❌ Valeur None trouvée à la position {i} dans le tuple: {row}")
+            return False
+    
+    # Vérifications spécifiques
+    if not isinstance(row[0], int) or row[0] <= 0:  # fixture_id
+        print(f"❌ fixture_id invalide: {row[0]}")
+        return False
+    
+    if not isinstance(row[3], int) or row[3] <= 0:  # home_team_id
+        print(f"❌ home_team_id invalide: {row[3]}")
+        return False
+    
+    if not isinstance(row[4], int) or row[4] <= 0:  # away_team_id
+        print(f"❌ away_team_id invalide: {row[4]}")
+        return False
+    
+    return True
+
+def extract_fixture_data(fixture):
+    try:
+        fixture_id = fixture.get("id")
+        if fixture_id is None:
+            return None
+            
+        season_id = str(fixture.get("season_id", ""))
+        date = fixture.get("starting_at")
+
+        participants = fixture.get("participants", [])
+        home = next((p for p in participants if p.get("meta", {}).get("location") == "home"), {})
+        away = next((p for p in participants if p.get("meta", {}).get("location") == "away"), {})
+
+        home_team_name = home.get("name", "")
+        away_team_name = away.get("name", "")
+
+        # Trouver les IDs correspondants dans notre base via les noms
+        home_team_id = get_team_id_from_name(home_team_name)
+        away_team_id = get_team_id_from_name(away_team_name)
+
+        if home_team_id is None or away_team_id is None:
+            print(f"⚠️ Impossible de mapper les équipes: '{home_team_name}' vs '{away_team_name}'")
+            return None
+
+        stats = fixture.get("statistics", [])
+        stat_map = {}
+        for stat in stats:
+            team_id = stat.get("participant_id")
+            type_id = stat.get("type_id")
+            value = stat.get("data", {}).get("value")
+            if team_id and type_id:
+                stat_map[(team_id, type_id)] = value
+
+        def get_stat(team, stat_name):
+            if not team or "id" not in team:
+                return None
+            for tid, name in TYPE_MAP.items():
+                if name == stat_name:
+                    return stat_map.get((team.get("id"), tid))
+            return None
+
+        scores = fixture.get("scores", {})
+        home_goals = scores.get("localteam_score") or get_stat(home, "Goals")
+        away_goals = scores.get("visitorteam_score") or get_stat(away, "Goals")
+
+        # Créer le tuple avec toutes les valeurs
+        row = (
+            fixture_id,
+            season_id,
+            date,
+            home_team_id,
+            away_team_id,
+            int(safe_value(home_goals)),
+            int(safe_value(away_goals)),
+            int(safe_value(get_stat(home, "Ball Possession"))),
+            int(safe_value(get_stat(away, "Ball Possession"))),
+            int(safe_value(get_stat(home, "Shots on Target"))),
+            int(safe_value(get_stat(away, "Shots on Target"))),
+            int(safe_value(get_stat(home, "Fouls"))),
+            int(safe_value(get_stat(away, "Fouls"))),
+            int(safe_value(get_stat(home, "Passes"))),
+            int(safe_value(get_stat(away, "Passes"))),
+            int(safe_value(get_stat(home, "Corners"))),
+            int(safe_value(get_stat(away, "Corners"))),
+            int(safe_value(get_stat(home, "Attacks"))),
+            int(safe_value(get_stat(away, "Attacks"))),
+            int(safe_value(get_stat(home, "Dangerous Attacks"))),
+            int(safe_value(get_stat(away, "Dangerous Attacks"))),
+            True
+        )
+        
+        # Valider le tuple avant de le retourner
+        if validate_row(row):
+            return row
+        else:
+            print(f"❌ Tuple invalide pour le fixture {fixture_id}")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Erreur lors de l'extraction des données pour le fixture {fixture.get('id')}: {e}")
+        return None
+
+def save_to_db(fixtures):
+    query = """
+        INSERT INTO match_stats (
+            fixture_id, season_id, date_match,
+            home_team_id, away_team_id,
+            home_goals, away_goals,
+            home_possession, away_possession,
+            home_shots_on_target, away_shots_on_target,
+            home_fouls, away_fouls,
+            home_passes, away_passes,
+            home_corners, away_corners,
+            home_attacks, away_attacks,
+            home_dangerous_attacks, away_dangerous_attacks,
+            adv_home
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (fixture_id) DO NOTHING
+    """
+
+    rows = []
+    for fixture in fixtures:
+        row = extract_fixture_data(fixture)
+        if row is not None:
+            rows.append(row)
+    
+    if rows:
+        try:
+            # Debug: Afficher le premier row pour vérification
+            if rows:
+                print(f" Premier row à insérer: {rows[0]}")
+            
+            execute_batch(cur, query, rows, page_size=50)
+            conn.commit()
+            print(f"✅ {len(rows)} fixtures insérées pour cette saison")
+        except Exception as e:
+            print(f"❌ Erreur lors de l'insertion en base: {e}")
+            print(f"❌ Détail de l'erreur: {type(e).__name__}")
+            conn.rollback()
+    else:
+        print("⚠️ Aucune donnée valide à insérer pour cette saison")
+
+if __name__ == "__main__":
+    all_fixtures = []
+    for season_id, season_label in SEASONS.items():
+        print(f"\n🔍 Traitement de la saison {season_label}...")
+        fixtures = fetch_fixtures_for_season(season_id, season_label)
+        if fixtures:
+            save_to_db(fixtures)
+            all_fixtures.extend(fixtures)
+        else:
+            print(f"⚠️ Aucune fixture trouvée pour la saison {season_label}")
+
+    print(f"\n✅ {len(all_fixtures)} fixtures traitées au total")
+
+cur.close()
+conn.close()
