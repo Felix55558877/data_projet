@@ -74,7 +74,6 @@ def calculate_team_stats(fixtures_df, season_label):
 
 
 if __name__ == "__main__":
-    # Charger le CSV historique
     fixtures_df = pd.read_csv("data/processed/fixtures_stats.csv")
 
     seasons = fixtures_df["season_label"].unique()
@@ -82,4 +81,4 @@ if __name__ == "__main__":
         season_df = fixtures_df[fixtures_df["season_label"] == season_label]
         team_stats_df = calculate_team_stats(season_df, season_label)
         upsert_teams_season(team_stats_df)
-        print(f"✅ Saison {season_label} traitée et insérée dans team_season")
+        print(f" Saison {season_label} traitée et insérée dans team_season")

@@ -6,7 +6,7 @@ import os
 
 load_dotenv()
 
-API_TOKEN = os.getenv("API_TOKEN")  # ⚠️ Mets ton token dans le .env
+API_TOKEN = os.getenv("API_TOKEN")  
 BASE_URL = "https://api.sportmonks.com/v3/football/fixtures"
 
 SEASONS = {

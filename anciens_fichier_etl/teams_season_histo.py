@@ -61,7 +61,6 @@ def main():
         )
         cursor = connection.cursor()
 
-        # Charger ton CSV
         df = pd.read_csv("data/processed/teams_seasons_stats.csv")
 
         insert_team_seasons(df, cursor)

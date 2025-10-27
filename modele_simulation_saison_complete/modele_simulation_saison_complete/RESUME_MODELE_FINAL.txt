@@ -1,0 +1,22 @@
+
+=== MODELE FINAL - SIMULATION SAISON COMPLETE ===
+Date: 2025-10-27 23:39
+
+PERFORMANCE & PARAMETRES
+- Accuracy reference (test): 0.6684
+- Learning Rate optimal: 0.05
+- Max Depth optimal: 3
+- Subsample: 0.8
+- Colsample_bytree: 0.8
+- Min Child Weight: 1
+- Gamma: 0
+
+DONNEES D'ENTRAINEMENT
+- Saisons utilisees: TOUTES disponibles
+- Nombre d'observations: 1900
+- Nombre de features: 21
+
+STRATEGIE
+- Usage: Simulation saison complete avant debut
+- Entrainement: Modele final avec toutes les donnees
+- Compatible Monte Carlo: OUI

@@ -25,7 +25,7 @@ def insert_match_stats(df, connection):
     for _, row in df.iterrows():
         try:
             fixture_id = int(row.get("fixture_id"))
-            season_id = str(row.get("season_id")).strip()
+            season_label = str(row.get("season_label")).strip()
             date_match = row.get("date_match")
 
             home_team_name = str(row.get("home_team")).strip()
@@ -71,7 +71,7 @@ def insert_match_stats(df, connection):
             # Insérer dans match_stats
             cursor.execute("""
                 INSERT INTO match_stats (
-                    fixture_id, season_id, date_match,
+                    fixture_id, season_label, date_match,
                     home_team_id, away_team_id,
                     home_goals, away_goals,
                     home_possession, away_possession,
@@ -91,7 +91,7 @@ def insert_match_stats(df, connection):
                 )
                 ON CONFLICT (fixture_id) DO NOTHING;
             """, (
-                fixture_id, season_id, date_match_obj,
+                fixture_id, season_label, date_match_obj,
                 home_team_id, away_team_id,
                 row.get("home_goals"), row.get("away_goals"),
                 row.get("home_possession"), row.get("away_possession"),
