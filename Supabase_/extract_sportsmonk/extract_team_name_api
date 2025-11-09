@@ -1,0 +1,75 @@
+import requests
+from dotenv import load_dotenv
+import json
+
+load_dotenv()
+
+API_TOKEN = "dBJ4oSVlnN6Cn6BaorSyJ1Xdo133asdlmklRr4w6uebbxP2iaqBk0T0Xdbee"
+BASE_URL = "https://api.sportmonks.com/v3/football/fixtures"
+
+SEASONS = {
+    16036: "2019/2020",
+    17420: "2020/2021",
+    18378: "2021/2022",
+    19734: "2022/2023",
+    21646: "2023/2024",
+    23614: "2024/2025",
+    25583: "2025/2026",
+}
+
+def get_unique_team_names_from_api():
+    """Récupère tous les noms d'équipes uniques de l'API SportMonks"""
+    unique_teams = set()  
+    
+    for season_id, season_label in SEASONS.items():
+        print(f" Récupération des équipes pour {season_label}...")
+        
+        url = BASE_URL
+        params = {
+            "api_token": API_TOKEN,
+            "filters": f"fixtureSeasons:{season_id};fixtureLeagues:8",
+            "include": "participants"
+        }
+
+        while url:
+            resp = requests.get(url, params=params)
+            data = resp.json()
+
+            if "data" not in data:
+                break
+
+            for fixture in data["data"]:
+                for participant in fixture.get("participants", []):
+                    team_name = participant.get("name")
+                    if team_name:
+                        unique_teams.add(team_name.strip())
+
+            pagination = data.get("pagination", {})
+            if pagination.get("has_more"):
+                url = pagination.get("next_page")
+                params = {"api_token": API_TOKEN}
+            else:
+                url = None
+    
+    return sorted(list(unique_teams))  
+
+def main():
+    # Récupérer les noms d'équipes uniques de l'API
+    api_team_names = get_unique_team_names_from_api()
+    
+    print(f"📊 {len(api_team_names)} noms d'équipes uniques trouvés dans l'API:")
+    print("\n" + "="*50)
+    
+    for i, team_name in enumerate(api_team_names, 1):
+        print(f"{i:2d}. {team_name}")
+    
+    # Sauvegarder la liste dans un fichier JSON
+    with open("api_team_names.json", "w", encoding="utf-8") as f:
+        json.dump(api_team_names, f, ensure_ascii=False, indent=2)
+    
+    
+    
+  
+
+if __name__ == "__main__":
+    main()
