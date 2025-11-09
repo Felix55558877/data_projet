@@ -1,88 +1,67 @@
-# Résumé projet Data : ETL, automatisation, config & structure Git
+#  Football Season Simulation & Prediction
 
-## 1. Problématique
-- Trouver une problématique métier ou scientifique.
-- Collecter les données (extraction).
-- Construire un pipeline ETL (Extract, Transform, Load).
-- Définir un schéma de données SQL pour stocker proprement les données.
-- Développer un modèle prédictif.
-- Automatiser l’extraction (et idéalement tout l’ETL) avec un déclenchement régulier (ex : quotidien).
-- Versionner et collaborer via un dépôt Git.
+##  Description
 
-## 2. Pipeline ETL : focus sur l’extraction
+Ce projet vise à **prédire les résultats de matchs de football** et à **simuler des saisons complètes** à l’aide d’un modèle de machine learning basé sur **XGBoost**.  
+Les données sont extraites, nettoyées et agrégées via un pipeline **ETL**, puis stockées dans une base **Supabase (PostgreSQL)**.
 
-### a. Extraction
-- Objectif : récupérer les données brutes depuis une source (API, fichier en ligne, base externe).
-- Script dédié : `src/data_engineering/extract.py`
-- Récupère les données automatiquement (ex : via API, requête HTTP, streaming).
-- Sauvegarde les données brutes dans un dossier `data/raw/`.
-- Paramètres (URL, clé API, chemins) externalisés dans `config.yaml`.
+Le modèle s’appuie sur les statistiques des saisons précédentes et les confrontations directes (*head-to-head*) pour estimer la probabilité de victoire, match nul ou défaite pour chaque rencontre.
 
-### b. Transformation
-- Nettoyage, mise en forme, normalisation.
-- Script : `src/data_engineering/transform.py`
-- Lit les données brutes, produit des données nettoyées/transformées dans `data/processed/`.
+---
 
-### c. Chargement
-- Chargement dans la base de données SQL.
-- Script : `src/data_engineering/load.py`
-- Utilise le schéma SQL défini, se connecte à la base avec paramètres du fichier config.
-
-## 3. Automatisation de l’extraction (et ETL)
-- Script central : `scripts/run_etl.py`
-- Appelle `extract.py`, `transform.py`, `load.py` dans cet ordre.
-- Automatisation via GitHub Actions (exemple dans `.github/workflows/extract.yml`) :  
-  déclenche `run_etl.py` automatiquement tous les jours (ou à la fréquence souhaitée).
-- Avantages :  
-  - Pas besoin de garder ta machine allumée.  
-  - Exécution fiable et traçable.  
-  - Déploiement simple.
-
-## 4. Fichier de configuration `config.yaml`
-- Centralise tous les paramètres importants :  
-  - URL des sources de données et clés API.  
-  - Chemins de stockage des données brutes et transformées.  
-  - Paramètres de connexion à la base SQL.  
-  - Autres seuils ou options.
-- Permet d’adapter facilement le projet à différents environnements sans modifier le code.
-- Chargé au début des scripts (ex : `extract.py`, `load.py`) pour lire les paramètres.
-
-## 5. Structure détaillée du repo Git
+## 🧱 Structure du projet
 
 mon_projet_data/
 │
-├── src/
-│ └── data_engineering/
-│ ├── extract.py # Extraction des données (source API/fichiers)
-│ ├── transform.py # Nettoyage & transformation des données
-│ └── load.py # Chargement dans base SQL
-│
-├── data/
-│ ├── raw/ # Données brutes extraites (ex : JSON, CSV)
-│ └── processed/ # Données transformées prêtes à charger
-│
-├── models/ # Modèles prédictifs & scripts entraînement
-│ └── train_model.py
-│
-├── notebooks/ # Exploration, analyse et visualisation
-│
-├── scripts/ # Scripts d’exécution (ETL complet)
-│ └── run_etl.py # Script qui lance extract + transform + load
-│
-├── .github/ # Automatisation GitHub Actions
-│ └── workflows/
-│ └── extract.yml # Workflow GitHub pour lancer run_etl.py régulièrement
-│
-├── config.yaml # Fichier de configuration central (URL, API key, chemins, DB)
-├── requirements.txt # Dépendances Python
-└── README.md # Documentation du projet
+├── anciens_fichier_etl/ # Anciennes versions du pipeline ETL
+├── csv_anciennes_versions/ # Sauvegardes CSV précédentes
+├── modele_simulation_saison_complete/ # Scripts de simulation Monte Carlo
+├── notebooks/ # Analyses exploratoires et tests
+├── scripts/
+│ ├── etl/ # Chargement des données (extract / transform / load)
+│ ├── data_modele_saison.py # Génération du dataset d'entraînement
+│ └── xbg_season/ # Entraînement du modèle XGBoost
+├── supabase/ # Scripts SQL et configuration de la base
+├── .gitignore # Exclusion des fichiers sensibles (ex: myenv, .env)
+└── README.md
 
+ Pipeline de données
 
-## 6. Exemple de fonctionnement résumé
-- Le workflow GitHub Actions déclenche `scripts/run_etl.py` automatiquement tous les jours.
-- `run_etl.py` importe et exécute dans l’ordre :  
-  - `extract.py` : récupère les données brutes via API (params dans `config.yaml`), stocke dans `data/raw/`.  
-  - `transform.py` : lit les données brutes, nettoie et prépare les données, sauvegarde dans `data/processed/`.  
-  - `load.py` : charge les données nettoyées dans une base SQL (connexion via `config.yaml`).
-- Tu peux ensuite utiliser `models/train_model.py` pour entraîner un modèle prédictif sur les données transformées.
-- Tout le code est versionné sur GitHub, facilitant la collaboration.
+1. **Extraction :** récupération des données de matchs depuis `match_stats` sur Supabase.  
+2. **Transformation :** calcul des statistiques par équipe et des confrontations directes.  
+3. **Chargement :** insertion dans la table `training_modele_season`.  
+4. **Préparation du modèle :**
+   - Variables issues des saisons précédentes (points, buts, possession, etc.)
+   - Données de *head-to-head* sur les 5 derniers matchs
+   - Encodage des résultats : `home_win`, `draw`, `away_win`
+
+---
+
+##  Modèle de Machine Learning
+
+- **Algorithme :** `XGBoost (multi:softprob)`
+- **Cible :** `result` (victoire domicile / nul / victoire extérieur)
+- **Évaluation :**
+  - Accuracy : ~67–68%
+  - Métriques : précision, rappel, F1-score par classe
+
+---
+
+##  Simulation de saison
+
+Une simulation de type **Monte Carlo** permet de :
+- prédire tous les matchs d’une saison donnée,
+- estimer les classements finaux,
+- calculer les probabilités de titre, qualification européenne ou relégation.
+
+##  Exécution
+
+1. **Créer l’environnement virtuel :**
+   ```bash
+   python -m venv myenv
+   source myenv/Scripts/activate
+
+pip install -r requirements.txt
+Voir les 2 notebooks pour consulter les details et résultats
+notebooks\simulation_Monte_Carlo.ipynb
+notebooks\xgboost_football.ipynb
